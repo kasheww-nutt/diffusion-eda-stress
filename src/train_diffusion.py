@@ -19,7 +19,7 @@ from src.utils import CKPT_DIR, log, set_seed
 
 def build(cfg, device):
     net = UNet1D(tuple(cfg["channels"]), cfg["emb_dim"]).to(device)
-    return net, Diffusion(net, cfg["T"], cfg["p_uncond"], device=device)
+    return net, Diffusion(net, cfg["T"], cfg["p_uncond"], device=device, pred=cfg.get("pred", "v"))
 
 
 @torch.no_grad()
@@ -76,7 +76,7 @@ def train_diffusion(X, y, s_ids, test_subject, cfg, device, tag, seed=0, epochs=
 
 def load_ema(cfg, device, tag, milestone=1.0):
     net, diff = build(cfg, device)
-    sd = torch.load(ckpt_path(tag, milestone), map_location=device)
+    sd = torch.load(ckpt_path(tag, milestone), map_location=device, weights_only=True)
     net.load_state_dict({k: v.float() if v.is_floating_point() else v for k, v in sd.items()})
     net.eval()
     diff.model = net

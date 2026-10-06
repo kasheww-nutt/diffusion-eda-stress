@@ -15,6 +15,7 @@ import dataclasses
 import numpy as np
 
 from src.data.loso import assert_no_leakage
+from src.data.preprocess import lowpass
 from src.eval.memorization import run_memorization
 from src.eval.utility import run_one, target_K
 from src.train_diffusion import load_ema, train_diffusion
@@ -22,9 +23,17 @@ from src.utils import log
 
 
 def generate_pool(diff, K, cfg, guidance=None, seed=0):
+    """Sample K windows per class, then apply the SAME 1 Hz low-pass as real data.
+
+    Real windows were low-passed in preprocessing; without this the sampler's
+    residual >1 Hz noise made the synthetic PSD ~10x off on a log scale.
+    """
     d = cfg["diffusion"]
     g = d["guidance"] if guidance is None else guidance
-    return diff.generate([K, K], guidance=g, steps=d["ddim_steps"], seed=seed)
+    X, y = diff.generate([K, K], guidance=g, steps=d["ddim_steps"], seed=seed)
+    dc = cfg["data"]
+    X = lowpass(X.astype(np.float64), dc["fs"], dc["lowpass_hz"], dc["lowpass_order"]).astype(np.float32)
+    return X, y
 
 
 def tradeoff_point(fold, Xs, ys, cfg, device, mem_fold=None):

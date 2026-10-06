@@ -23,6 +23,7 @@ classifier:
 
 diffusion:
   T: 1000
+  pred: v               # v-prediction (eps-prediction blew up window levels; see VIVA_NOTES)
   channels: [64, 128, 256]
   emb_dim: 128
   epochs: 400
@@ -31,7 +32,7 @@ diffusion:
   ema: 0.999
   p_uncond: 0.1          # label dropout for classifier-free guidance
   ddim_steps: 50
-  guidance: 2.0
+  guidance: 0.0          # chosen by fidelity to S2 TRAINING windows (w>0 collapses diversity)
   milestones: [0.25, 0.5, 1.0]
 
 utility:
@@ -51,7 +52,7 @@ memorization:
   dtw_band: 24
 
 curves:
-  guidance: [0.0, 1.0, 2.0, 3.0, 5.0]
+  guidance: [0.0, 0.5, 1.0, 2.0, 3.0]
   n_train_subjects: [4, 8, 14]
   subject_curve_folds: [S2, S5, S9, S13, S16]
 

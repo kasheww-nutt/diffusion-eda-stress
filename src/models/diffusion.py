@@ -25,12 +25,22 @@ def cosine_alphas_cumprod(T, s=0.008):
 
 
 class Diffusion:
-    def __init__(self, model, T=1000, p_uncond=0.1, n_classes=2, device="cpu"):
+    """pred="v": the network predicts v = sqrt(abar)*eps - sqrt(1-abar)*x0.
+
+    Why v and not eps: at the last steps of the cosine schedule abar ~ 0, so
+    recovering x0 from an eps-prediction divides by sqrt(abar) ~ 0 and any
+    error explodes. For EDA this blew up the window's mean level (the most
+    important feature). v-prediction stays well-posed at every noise level
+    (Salimans & Ho 2022; Lin et al. 2024).
+    """
+
+    def __init__(self, model, T=1000, p_uncond=0.1, n_classes=2, device="cpu", pred="v"):
         self.model = model
         self.T = T
         self.p_uncond = p_uncond
         self.null = n_classes          # index of the null label
         self.device = device
+        self.pred = pred
         self.abar = cosine_alphas_cumprod(T).to(device)
 
     def loss(self, x0, y):
@@ -41,7 +51,16 @@ class Diffusion:
         xt = ab.sqrt() * x0 + (1 - ab).sqrt() * eps
         drop = torch.rand(b, device=x0.device) < self.p_uncond
         y = torch.where(drop, torch.full_like(y, self.null), y)
-        return F.mse_loss(self.model(xt, t, y), eps)
+        target = eps if self.pred == "eps" else ab.sqrt() * eps - (1 - ab).sqrt() * x0
+        return F.mse_loss(self.model(xt, t, y), target)
+
+    def _x0_eps(self, out, x, ab):
+        """Convert network output to (x0_hat, eps_hat)."""
+        if self.pred == "eps":
+            return (x - (1 - ab).sqrt() * out) / ab.sqrt(), out
+        x0 = ab.sqrt() * x - (1 - ab).sqrt() * out
+        eps = (1 - ab).sqrt() * x + ab.sqrt() * out
+        return x0, eps
 
     @torch.no_grad()
     def sample(self, y, length=240, steps=50, guidance=2.0, model=None, generator=None, clip=8.0):
@@ -55,13 +74,14 @@ class Diffusion:
         for i, t in enumerate(ts):
             tt = t.repeat(b)
             if guidance == 0:
-                eps = net(x, tt, y)
+                out = net(x, tt, y)
             else:
-                e = net(torch.cat([x, x]), torch.cat([tt, tt]), torch.cat([y, null]))
-                ec, eu = e.chunk(2)
-                eps = (1 + guidance) * ec - guidance * eu
+                o = net(torch.cat([x, x]), torch.cat([tt, tt]), torch.cat([y, null]))
+                oc, ou = o.chunk(2)
+                out = (1 + guidance) * oc - guidance * ou   # CFG (linear, so valid for eps or v)
             ab = self.abar[t]
-            x0 = ((x - (1 - ab).sqrt() * eps) / ab.sqrt()).clamp(-clip, clip)
+            x0, eps = self._x0_eps(out, x, ab)
+            x0 = x0.clamp(-clip, clip)
             ab_prev = self.abar[ts[i + 1]] if i + 1 < len(ts) else torch.tensor(1.0, device=self.device)
             x = ab_prev.sqrt() * x0 + (1 - ab_prev).sqrt() * eps
         return x.squeeze(1)
