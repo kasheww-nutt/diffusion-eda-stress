@@ -1,0 +1,59 @@
+# All hyperparameters live here. They are fixed BEFORE looking at any test fold
+# (no tuning on held-out subjects).
+
+seed: 0
+subjects: [S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S13, S14, S15, S16, S17]
+
+data:
+  fs: 4                 # wrist E4 EDA sampling rate (Hz)
+  label_fs: 700         # RespiBAN label rate (Hz)
+  lowpass_hz: 1.0       # Butterworth cut-off
+  lowpass_order: 4
+  window_s: 60          # 60 s -> 240 samples
+  stride_s: 15          # overlap only WITHIN a subject; LOSO split is by subject
+  keep_labels: [1, 2, 3]  # 1 baseline, 2 stress, 3 amusement
+  stress_label: 2
+
+classifier:
+  epochs: 30
+  batch_size: 64
+  lr: 0.001
+  dropout: 0.3
+  seeds: [0, 1, 2]
+
+diffusion:
+  T: 1000
+  channels: [64, 128, 256]
+  emb_dim: 128
+  epochs: 400
+  batch_size: 128
+  lr: 0.0002
+  ema: 0.999
+  p_uncond: 0.1          # label dropout for classifier-free guidance
+  ddim_steps: 50
+  guidance: 2.0
+  milestones: [0.25, 0.5, 1.0]
+
+utility:
+  fractions: [0.05, 0.10, 0.25, 0.50, 1.00]
+
+augment:
+  jitter_sigma: 0.03
+  scale_sigma: 0.1
+  warp_sigma: 0.2
+  warp_knots: 4
+  drift_sigma: 0.3
+  scr_rate_per_min: 2.0
+  scr_amp: 0.5
+
+memorization:
+  dtw_pairs: 300
+  dtw_band: 24
+
+curves:
+  guidance: [0.0, 1.0, 2.0, 3.0, 5.0]
+  n_train_subjects: [4, 8, 14]
+  subject_curve_folds: [S2, S5, S9, S13, S16]
+
+replacement:
+  rates: [0.10, 0.25, 0.50]
