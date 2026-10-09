@@ -44,18 +44,20 @@ def utility_tables():
     tests = []
     piv = per_subj.pivot_table(index="subject", columns=["variant", "frac"], values="macro_f1")
     fracs = sorted(per_subj[per_subj.variant == "C"].frac.unique())
+    def paired(x, y):
+        diff = x - y
+        try:
+            p = float(wilcoxon(x, y).pvalue) if np.any(diff != 0) else 1.0
+        except ValueError:      # too few subjects for the test
+            p = float("nan")
+        return {"mean_diff_f1": diff.mean(), "wins": int((diff > 0).sum()), "losses": int((diff < 0).sum()), "p": p}
+
     for frac in fracs:
         for a, b in (("C", "D"), ("C", "E"), ("C", "F"), ("E", "D"), ("F", "D")):
-            x, y = piv[(a, frac)], piv[(b, frac)]
-            diff = x - y
-            p = wilcoxon(x, y).pvalue if np.any(diff != 0) else 1.0
-            tests.append({"frac": frac, "comparison": f"{a} vs {b}", "mean_diff_f1": diff.mean(),
-                          "wins": int((diff > 0).sum()), "losses": int((diff < 0).sum()), "p": p})
-    xa, xb = piv[("B", 1.0)], piv[("A", 1.0)]
-    tests.append({"frac": 1.0, "comparison": "B vs A", "mean_diff_f1": (xa - xb).mean(),
-                  "wins": int((xa > xb).sum()), "losses": int((xa < xb).sum()), "p": wilcoxon(xa, xb).pvalue})
+            tests.append({"frac": frac, "comparison": f"{a} vs {b}", **paired(piv[(a, frac)], piv[(b, frac)])})
+    tests.append({"frac": 1.0, "comparison": "B vs A", **paired(piv[("B", 1.0)], piv[("A", 1.0)])})
     tests = pd.DataFrame(tests)
-    tests["p_holm"] = holm(tests.p)
+    tests["p_holm"] = holm(tests.p.fillna(1.0))
     return per_subj, summ, tests
 
 
@@ -87,7 +89,7 @@ def curve_table(name):
             rows.append({"subject": s, "setting": float(setting),
                          **{k: v[k] for k in ("util_C10_f1", "dcr_ratio", "frac_below_p5", "mia_auc")}})
     df = pd.DataFrame(rows)
-    return df.groupby("setting").agg(["mean", "std"]).drop(columns="subject", errors="ignore") if len(df) else df
+    return df.drop(columns="subject").groupby("setting").agg(["mean", "std"]) if len(df) else df
 
 
 def replacement_table():

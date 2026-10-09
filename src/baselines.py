@@ -14,13 +14,43 @@ F: Time-series augmentation of random real windows:
      SCR insertion (Bateman-shaped phasic bumps: fast rise, slow decay).
 """
 import numpy as np
-from imblearn.over_sampling import SMOTE
 from scipy.interpolate import CubicSpline
+from sklearn.neighbors import NearestNeighbors
+
+try:
+    from imblearn.over_sampling import SMOTE
+except Exception:          # imbalanced-learn missing / incompatible -> same algorithm below
+    SMOTE = None
+
+
+def _smote_numpy(X, y, K, seed, k=5):
+    """Plain SMOTE: new = a + u * (b - a), b one of a's k nearest same-class neighbours."""
+    rng = np.random.default_rng(seed)
+    Xo, yo = [X], [y]
+    for c in (0, 1):
+        Xc = X[y == c]
+        need = K - len(Xc)
+        if need <= 0 or len(Xc) == 0:
+            continue
+        if len(Xc) == 1:
+            new = np.repeat(Xc, need, 0)
+        else:
+            kk = min(k, len(Xc) - 1)
+            nbr = NearestNeighbors(n_neighbors=kk + 1).fit(Xc).kneighbors(Xc, return_distance=False)[:, 1:]
+            a = rng.integers(0, len(Xc), need)
+            b = nbr[a, rng.integers(0, kk, need)]
+            u = rng.random((need, 1))
+            new = Xc[a] + u * (Xc[b] - Xc[a])
+        Xo.append(new.astype(X.dtype))
+        yo.append(np.full(need, c))
+    return np.concatenate(Xo), np.concatenate(yo)
 
 
 def smote_fill(X, y, K, seed):
     counts = np.bincount(y, minlength=2)
     k = int(max(1, min(5, counts.min() - 1)))
+    if SMOTE is None or counts.min() < 2:
+        return _smote_numpy(X, y, K, seed, k)
     sm = SMOTE(sampling_strategy={c: int(max(K, counts[c])) for c in (0, 1)}, k_neighbors=k, random_state=seed)
     return sm.fit_resample(X, y)
 

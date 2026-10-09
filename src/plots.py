@@ -20,7 +20,8 @@ def done_folds(name):
     return sorted([d.name for d in FOLDS_DIR.iterdir() if (d / name).exists()], key=lambda s: int(s[1:]))
 
 
-def samples(subject="S2"):
+def samples(subject=None):
+    subject = subject or done_folds("samples.npz")[0]
     z = np.load(FOLDS_DIR / subject / "samples.npz")
     cfg = load_config()
     t = np.arange(240) / 4
@@ -142,7 +143,8 @@ def replacement():
     plt.close(fig)
 
 
-def loss(subject="S2"):
+def loss(subject=None):
+    subject = subject or done_folds("diffusion_loss.json")[0]
     p = FOLDS_DIR / subject / "diffusion_loss.json"
     if not p.exists():
         return
